@@ -6,7 +6,7 @@ import { useState } from "react";
 import { 
   HomeIcon, ClockIcon, DocumentTextIcon, CheckCircleIcon, CalendarDaysIcon, 
   ChevronDownIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, UserCircleIcon,
-  PaperAirplaneIcon, PencilSquareIcon
+  PaperAirplaneIcon, PencilSquareIcon, AdjustmentsHorizontalIcon
 } from "@heroicons/react/24/outline";
 
 type NavMenu = { name: string; href: string; icon: React.ElementType; };
@@ -27,7 +27,10 @@ const requestNavigation: CollapsibleMenu = {
 };
 const adminNavigation: CollapsibleMenu = {
   name: "Admin", icon: Cog6ToothIcon, key: "admin", basePath: "/management",
-  subLinks: [ { name: "Approve Requests", href: "/management", icon: CheckCircleIcon }, ],
+  subLinks: [ 
+    { name: "Approve Requests", href: "/management", icon: CheckCircleIcon },
+    { name: "Global Settings", href: "/management/settings", icon: AdjustmentsHorizontalIcon },
+  ],
 };
 
 const getInitialMenu = (pathname: string) => {

@@ -27,4 +27,8 @@ urlpatterns = [
     path('api/manager/review-log/<int:pk>/', views.ReviewManualLogView.as_view(), name='review_log'),
     path('api/manager/reports/', views.ManagerReportView.as_view(), name='manager_reports'),
     path('api/logs/my-grouped-logs/', views.MyGroupedLogsView.as_view(), name='my_grouped_logs'),
+    path('api/settings/', views.GlobalSettingsView.as_view(), name='global_settings'),
+    path('api/shifts/', views.WorkShiftListView.as_view(), name='list_shifts'),
+    path('api/shifts/create/', views.WorkShiftCreateView.as_view(), name='create_shift'),
+    path('api/shifts/<int:pk>/', views.WorkShiftDetailView.as_view(), name='shift_detail'),
 ]

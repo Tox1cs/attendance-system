@@ -2,6 +2,15 @@ from django.db import models
 from django.contrib.auth.models import User
 import datetime
 
+class GlobalSettings(models.Model):
+    grace_period_minutes = models.IntegerField(default=90)
+    penalty_rate = models.DecimalField(default=1.4, max_digits=3, decimal_places=2)
+    
+    def __str__(self):
+        return "Company-Wide Settings"
+    class Meta:
+        verbose_name_plural = "Global Settings"
+
 class WorkShift(models.Model):
     name = models.CharField(max_length=100, unique=True)
     def __str__(self): return self.name
@@ -14,8 +23,6 @@ class ShiftDayRule(models.Model):
     start_time = models.TimeField(default=datetime.time(8, 0))
     end_time = models.TimeField(default=datetime.time(16, 45))
     required_work_minutes = models.IntegerField(default=525)
-    grace_period_minutes = models.IntegerField(default=90)
-    penalty_rate = models.DecimalField(default=1.4, max_digits=3, decimal_places=1)
     class Meta: unique_together = ('shift', 'day_of_week'); ordering = ['day_of_week']
     def __str__(self): return f"{self.shift.name} - {self.get_day_of_week_display()}"
 
@@ -88,16 +95,12 @@ class MissionRequest(models.Model):
 class ManualLogRequest(models.Model):
     STATUS_PENDING = 'PENDING'; STATUS_APPROVED = 'APPROVED'; STATUS_REJECTED = 'REJECTED'
     STATUS_CHOICES = [(STATUS_PENDING, 'Pending'), (STATUS_APPROVED, 'Approved'), (STATUS_REJECTED, 'Rejected')]
-    
     LOG_TYPE_IN = 'IN'; LOG_TYPE_OUT = 'OUT'
     LOG_TYPE_CHOICES = [(LOG_TYPE_IN, 'Clock In'), (LOG_TYPE_OUT, 'Clock Out')]
-    
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
     date = models.DateField()
     time = models.TimeField()
     log_type = models.CharField(max_length=3, choices=LOG_TYPE_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
     reason = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.employee.full_name} - {self.date} @ {self.time} ({self.get_log_type_display()}) - {self.get_status_display()}"
+    def __str__(self): return f"{self.employee.full_name} - {self.date} @ {self.time} ({self.get_log_type_display()}) - {self.get_status_display()}"

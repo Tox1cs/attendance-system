@@ -1,12 +1,13 @@
 from rest_framework import generics
 from .models import (
     RawAttendanceLog, OvertimeRequest, DailyAttendanceReport, 
-    LeaveRequest, MissionRequest, ManualLogRequest, Holiday
+    LeaveRequest, MissionRequest, ManualLogRequest, Holiday, GlobalSettings, WorkShift, ShiftDayRule
 )
 from .serializers import (
     RawAttendanceLogSerializer, OvertimeRequestCreateSerializer, DailyAttendanceReportSerializer, OvertimeRequestListSerializer,
     LeaveRequestCreateSerializer, LeaveRequestListSerializer, MissionRequestCreateSerializer, MissionRequestListSerializer,
-    ManualLogRequestCreateSerializer, ManualLogRequestPairCreateSerializer, ManualLogRequestListSerializer
+    ManualLogRequestCreateSerializer, ManualLogRequestPairCreateSerializer, ManualLogRequestListSerializer, GlobalSettingsSerializer,
+    WorkShiftSerializer, WorkShiftDetailSerializer
 )
 from rest_framework.permissions import IsAuthenticated
 from .permissions import IsManager
@@ -16,28 +17,49 @@ from rest_framework import status
 from collections import defaultdict
 import datetime
 from django.utils import timezone
+from django.db import transaction
+
+class GlobalSettingsView(generics.RetrieveUpdateAPIView):
+    queryset = GlobalSettings.objects.all(); serializer_class = GlobalSettingsSerializer; permission_classes = [IsAuthenticated, IsManager]
+    def get_object(self):
+        obj, created = GlobalSettings.objects.get_or_create(pk=1)
+        return obj
+
+class WorkShiftListView(generics.ListAPIView):
+    queryset = WorkShift.objects.all(); serializer_class = WorkShiftSerializer; permission_classes = [IsAuthenticated, IsManager]
+
+class WorkShiftCreateView(generics.CreateAPIView):
+    queryset = WorkShift.objects.all()
+    serializer_class = WorkShiftSerializer
+    permission_classes = [IsAuthenticated, IsManager]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        shift = serializer.save()
+        for i in range(7):
+            ShiftDayRule.objects.create(shift=shift, day_of_week=i)
+
+class WorkShiftDetailView(generics.RetrieveUpdateAPIView):
+    queryset = WorkShift.objects.all()
+    serializer_class = WorkShiftDetailSerializer
+    permission_classes = [IsAuthenticated, IsManager]
 
 class LogAttendanceView(generics.CreateAPIView):
     queryset = RawAttendanceLog.objects.all(); serializer_class = RawAttendanceLogSerializer
-
 class OvertimeRequestCreateView(generics.CreateAPIView):
     queryset = OvertimeRequest.objects.all(); serializer_class = OvertimeRequestCreateSerializer; permission_classes = [IsAuthenticated] 
     def get_serializer_context(self): return {'request': self.request}
     def perform_create(self, serializer): serializer.save(employee=self.request.user.employee)
-
 class MyRequestHistoryView(generics.ListAPIView):
     serializer_class = OvertimeRequestListSerializer; permission_classes = [IsAuthenticated]
     def get_queryset(self): return OvertimeRequest.objects.filter(employee=self.request.user.employee).order_by('-date')
-
 class LeaveRequestCreateView(generics.CreateAPIView):
     queryset = LeaveRequest.objects.all(); serializer_class = LeaveRequestCreateSerializer; permission_classes = [IsAuthenticated]
     def get_serializer_context(self): return {'request': self.request}
     def perform_create(self, serializer): serializer.save(employee=self.request.user.employee, status=LeaveRequest.STATUS_PENDING)
-
 class MyLeaveHistoryView(generics.ListAPIView):
     serializer_class = LeaveRequestListSerializer; permission_classes = [IsAuthenticated]
     def get_queryset(self): return LeaveRequest.objects.filter(employee=self.request.user.employee).order_by('-date')
-
 class MyGroupedLogsView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request, *args, **kwargs):
@@ -96,16 +118,9 @@ class ManualLogRequestPairView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = ManualLogRequestPairCreateSerializer(data=request.data)
         if serializer.is_valid():
-            data = serializer.validated_data
-            employee = request.user.employee
-            req_in = ManualLogRequest.objects.create(
-                employee=employee, date=data['date'], time=data['start_time'],
-                log_type=ManualLogRequest.LOG_TYPE_IN, reason=data.get('reason', 'Paired remote log'), status=ManualLogRequest.STATUS_PENDING
-            )
-            req_out = ManualLogRequest.objects.create(
-                employee=employee, date=data['date'], time=data['end_time'],
-                log_type=ManualLogRequest.LOG_TYPE_OUT, reason=data.get('reason', 'Paired remote log'), status=ManualLogRequest.STATUS_PENDING
-            )
+            data = serializer.validated_data; employee = request.user.employee
+            req_in = ManualLogRequest.objects.create(employee=employee, date=data['date'], time=data['start_time'], log_type=ManualLogRequest.LOG_TYPE_IN, reason=data.get('reason', 'Paired remote log'), status=ManualLogRequest.STATUS_PENDING)
+            req_out = ManualLogRequest.objects.create(employee=employee, date=data['date'], time=data['end_time'], log_type=ManualLogRequest.LOG_TYPE_OUT, reason=data.get('reason', 'Paired remote log'), status=ManualLogRequest.STATUS_PENDING)
             return Response({"status": "Paired log requests created successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 class MyManualLogHistoryView(generics.ListAPIView):
