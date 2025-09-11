@@ -19,18 +19,25 @@ from django.utils import timezone
 
 class LogAttendanceView(generics.CreateAPIView):
     queryset = RawAttendanceLog.objects.all(); serializer_class = RawAttendanceLogSerializer
+
 class OvertimeRequestCreateView(generics.CreateAPIView):
     queryset = OvertimeRequest.objects.all(); serializer_class = OvertimeRequestCreateSerializer; permission_classes = [IsAuthenticated] 
+    def get_serializer_context(self): return {'request': self.request}
     def perform_create(self, serializer): serializer.save(employee=self.request.user.employee)
+
 class MyRequestHistoryView(generics.ListAPIView):
     serializer_class = OvertimeRequestListSerializer; permission_classes = [IsAuthenticated]
     def get_queryset(self): return OvertimeRequest.objects.filter(employee=self.request.user.employee).order_by('-date')
+
 class LeaveRequestCreateView(generics.CreateAPIView):
     queryset = LeaveRequest.objects.all(); serializer_class = LeaveRequestCreateSerializer; permission_classes = [IsAuthenticated]
+    def get_serializer_context(self): return {'request': self.request}
     def perform_create(self, serializer): serializer.save(employee=self.request.user.employee, status=LeaveRequest.STATUS_PENDING)
+
 class MyLeaveHistoryView(generics.ListAPIView):
     serializer_class = LeaveRequestListSerializer; permission_classes = [IsAuthenticated]
     def get_queryset(self): return LeaveRequest.objects.filter(employee=self.request.user.employee).order_by('-date')
+
 class MyGroupedLogsView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request, *args, **kwargs):
@@ -68,6 +75,7 @@ class MyGroupedLogsView(APIView):
         return Response(final_report, status=status.HTTP_200_OK)
 class MissionRequestCreateView(generics.CreateAPIView):
     queryset = MissionRequest.objects.all(); serializer_class = MissionRequestCreateSerializer; permission_classes = [IsAuthenticated]
+    def get_serializer_context(self): return {'request': self.request}
     def perform_create(self, serializer): serializer.save(employee=self.request.user.employee, status=MissionRequest.STATUS_PENDING)
 class MyMissionHistoryView(generics.ListAPIView):
     serializer_class = MissionRequestListSerializer; permission_classes = [IsAuthenticated]
@@ -101,8 +109,7 @@ class ManualLogRequestPairView(APIView):
             return Response({"status": "Paired log requests created successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 class MyManualLogHistoryView(generics.ListAPIView):
-    serializer_class = ManualLogRequestListSerializer
-    permission_classes = [IsAuthenticated]
+    serializer_class = ManualLogRequestListSerializer; permission_classes = [IsAuthenticated]
     def get_queryset(self): return ManualLogRequest.objects.filter(employee=self.request.user.employee).order_by('-date', '-time')
 class PendingOvertimeView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsManager]; serializer_class = OvertimeRequestListSerializer 
@@ -152,9 +159,7 @@ class ReviewManualLogView(APIView):
         if action == "APPROVE":
             req_to_review.status = ManualLogRequest.STATUS_APPROVED; req_to_review.save()
             timestamp = timezone.make_aware(datetime.datetime.combine(req_to_review.date, req_to_review.time))
-            RawAttendanceLog.objects.create(
-                employee_code=req_to_review.employee.employee_code, timestamp=timestamp
-            )
+            RawAttendanceLog.objects.create(employee_code=req_to_review.employee.employee_code, timestamp=timestamp)
             return Response({"status": "Log Approved and created successfully"}, status=status.HTTP_200_OK)
         elif action == "REJECT":
             req_to_review.status = ManualLogRequest.STATUS_REJECTED; req_to_review.save()

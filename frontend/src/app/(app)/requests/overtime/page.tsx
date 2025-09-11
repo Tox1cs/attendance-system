@@ -2,22 +2,9 @@
 
 import { useState, useEffect } from "react";
 
-type OvertimeHistoryItem = {
-  id: number;
-  date: string;
-  status: string;
-};
-
-const statusColorMap: { [key: string]: string } = {
-  "Pending": "text-yellow-600 bg-yellow-100",
-  "Approved": "text-green-600 bg-green-100",
-  "Rejected": "text-red-600 bg-red-100",
-};
-
-const getAuthHeaders = () => ({
-  "Content-Type": "application/json",
-  "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
-});
+type OvertimeHistoryItem = { id: number; date: string; status: string; };
+const statusColorMap: { [key: string]: string } = { "Pending": "text-yellow-600 bg-yellow-100", "Approved": "text-green-600 bg-green-100", "Rejected": "text-red-600 bg-red-100" };
+const getAuthHeaders = () => ({ "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("access_token")}` });
 
 export default function OvertimeRequestPage() {
   const [requestDate, setRequestDate] = useState("");
@@ -28,25 +15,17 @@ export default function OvertimeRequestPage() {
   const fetchHistory = async () => {
     setLoading(true);
     const token = localStorage.getItem("access_token");
-    if (!token) {
-        window.location.href = '/';
-        return;
-    }
+    if (!token) { window.location.href = '/'; return; }
     try {
       const response = await fetch("http://localhost:8000/api/requests/my-history/", { headers: { "Authorization": `Bearer ${token}` } });
       if (!response.ok) throw new Error("Failed to fetch history.");
       const data = await response.json();
       setHistory(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } 
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  useEffect(() => { fetchHistory(); }, []);
 
   const handleOvertimeRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,13 +40,19 @@ export default function OvertimeRequestPage() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ date: requestDate, requested_minutes: 0 })
       });
+      
       const data = await response.json();
+
       if (response.status === 201) {
         setMessage({ type: "success", text: "Overtime request submitted!" });
         setRequestDate("");
         fetchHistory();
       } else {
-        setMessage({ type: "error", text: data.date ? "A request for this date already exists." : JSON.stringify(data) });
+        if (data.non_field_errors && data.non_field_errors.length > 0) {
+            setMessage({ type: "error", text: data.non_field_errors[0] });
+        } else {
+            setMessage({ type: "error", text: "An unknown error occurred." });
+        }
       }
     } catch (err) {
       setMessage({ type: "error", text: "Connection error." });
@@ -91,7 +76,6 @@ export default function OvertimeRequestPage() {
           </button>
         </form>
       </div>
-
       <div className="rounded-lg bg-white p-6 shadow-md">
         <h2 className="mb-4 text-xl font-semibold text-gray-700">My Overtime History</h2>
         <table className="min-w-full divide-y divide-gray-200">

@@ -2,24 +2,9 @@
 
 import { useState, useEffect } from "react";
 
-type LeaveHistoryItem = {
-  id: number;
-  date: string;
-  status: string;
-  leave_type: string;
-  requested_minutes: number;
-};
-
-const statusColorMap: { [key: string]: string } = {
-  "Pending": "text-yellow-600 bg-yellow-100",
-  "Approved": "text-green-600 bg-green-100",
-  "Rejected": "text-red-600 bg-red-100",
-};
-
-const getAuthHeaders = () => ({
-  "Content-Type": "application/json",
-  "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
-});
+type LeaveHistoryItem = { id: number; date: string; status: string; leave_type: string; requested_minutes: number; };
+const statusColorMap: { [key: string]: string } = { "Pending": "text-yellow-600 bg-yellow-100", "Approved": "text-green-600 bg-green-100", "Rejected": "text-red-600 bg-red-100" };
+const getAuthHeaders = () => ({ "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("access_token")}` });
 
 export default function LeaveRequestPage() {
   const [leaveRequestDate, setLeaveRequestDate] = useState("");
@@ -33,59 +18,41 @@ export default function LeaveRequestPage() {
   const fetchHistory = async () => {
     setLoading(true);
     const token = localStorage.getItem("access_token");
-    if (!token) {
-        window.location.href = '/';
-        return;
-    }
+    if (!token) { window.location.href = '/'; return; }
     try {
       const response = await fetch("http://localhost:8000/api/leave/my-history/", { headers: { "Authorization": `Bearer ${token}` } });
       if (!response.ok) throw new Error("Failed to fetch history.");
       const data = await response.json();
       setHistory(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } 
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  useEffect(() => { fetchHistory(); }, []);
 
   const handleLeaveRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setLeaveMessage(null);
-    if (!leaveRequestDate) {
-      setLeaveMessage({ type: "error", text: "Please select a date." });
-      return;
-    }
+    if (!leaveRequestDate) { setLeaveMessage({ type: "error", text: "Please select a date." }); return; }
     const minutes = leaveType === 'HOURLY' ? leaveMinutes : 0;
-    if (leaveType === 'HOURLY' && minutes <= 0) {
-        setLeaveMessage({ type: "error", text: "Minutes must be greater than 0 for hourly leave." });
-        return;
-    }
+    if (leaveType === 'HOURLY' && minutes <= 0) { setLeaveMessage({ type: "error", text: "Minutes must be greater than 0 for hourly leave." }); return; }
+    
     try {
       const response = await fetch("http://localhost:8000/api/leave/request/", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          date: leaveRequestDate,
-          leave_type: leaveType,
-          requested_minutes: minutes,
-          reason: leaveReason
-        })
+        method: "POST", headers: getAuthHeaders(),
+        body: JSON.stringify({ date: leaveRequestDate, leave_type: leaveType, requested_minutes: minutes, reason: leaveReason })
       });
       const data = await response.json();
       if (response.status === 201) {
         setLeaveMessage({ type: "success", text: "Leave request submitted!" });
-        setLeaveRequestDate("");
-        setLeaveType("FULL_DAY");
-        setLeaveMinutes(0);
-        setLeaveReason("");
+        setLeaveRequestDate(""); setLeaveType("FULL_DAY"); setLeaveMinutes(0); setLeaveReason("");
         fetchHistory();
       } else {
-         setLeaveMessage({ type: "error", text: data.date ? "A leave request for this date already exists." : JSON.stringify(data) });
+        if (data.non_field_errors && data.non_field_errors.length > 0) {
+            setLeaveMessage({ type: "error", text: data.non_field_errors[0] });
+        } else {
+            setLeaveMessage({ type: "error", text: "An unknown error occurred." });
+        }
       }
     } catch (err) {
       setLeaveMessage({ type: "error", text: "Connection error." });
@@ -115,24 +82,19 @@ export default function LeaveRequestPage() {
               <label htmlFor="leave-minutes" className="block text-sm font-medium text-gray-700">Duration (in Minutes)</label>
               <input id="leave-minutes" type="number" value={leaveMinutes} onChange={(e) => setLeaveMinutes(parseInt(e.target.value) || 0)}
                 className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm sm:w-64"
-                placeholder="e.g., 120"
               />
             </div>
           )}
           <div>
             <label htmlFor="leave-reason" className="block text-sm font-medium text-gray-700">Reason (Optional)</label>
             <textarea id="leave-reason" value={leaveReason} onChange={(e) => setLeaveReason(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm"
-              rows={3}
+              className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm" rows={3}
             />
           </div>
           {leaveMessage && <div className={`rounded-md p-3 text-sm ${leaveMessage.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{leaveMessage.text}</div>}
-          <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
-            Submit Leave Request
-          </button>
+          <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">Submit Leave Request</button>
         </form>
       </div>
-
       <div className="rounded-lg bg-white p-6 shadow-md">
         <h2 className="mb-4 text-xl font-semibold text-gray-700">My Leave History</h2>
         <table className="min-w-full divide-y divide-gray-200">
@@ -145,7 +107,7 @@ export default function LeaveRequestPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
-             {loading ? ( <tr><td colSpan={4} className="p-4 text-center text-sm text-gray-500">Loading...</td></tr> ) 
+            {loading ? ( <tr><td colSpan={4} className="p-4 text-center text-sm text-gray-500">Loading...</td></tr> ) 
             : history.length === 0 ? ( <tr><td colSpan={4} className="p-4 text-center text-sm text-gray-500">No leave requests.</td></tr> ) 
             : (
               history.map((item) => (

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "./globals.css"; // This imports Tailwind CSS
+import "./globals.css";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -9,7 +10,6 @@ export const metadata: Metadata = {
   description: "Full-Stack Attendance App",
 };
 
-// This is the Root Layout for the entire application
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -18,8 +18,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-gray-100 text-gray-900`}>
-        {/* All pages will be rendered inside the 'children' prop */}
         {children}
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
   );

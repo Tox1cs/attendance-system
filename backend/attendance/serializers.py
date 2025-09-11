@@ -8,7 +8,13 @@ class RawAttendanceLogSerializer(serializers.ModelSerializer):
     class Meta: model = RawAttendanceLog; fields = ['employee_code', 'timestamp']
 
 class OvertimeRequestCreateSerializer(serializers.ModelSerializer):
-    class Meta: model = OvertimeRequest; fields = ['id', 'date', 'requested_minutes']
+    class Meta: model = OvertimeRequest; fields = ['date', 'requested_minutes']
+    
+    def validate(self, data):
+        employee = self.context['request'].user.employee
+        if OvertimeRequest.objects.filter(employee=employee, date=data['date']).exists():
+            raise serializers.ValidationError("An overtime request for this employee on this date already exists.")
+        return data
 
 class OvertimeRequestListSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
@@ -23,7 +29,11 @@ class DailyAttendanceReportSerializer(serializers.ModelSerializer):
 
 class LeaveRequestCreateSerializer(serializers.ModelSerializer):
     class Meta: model = LeaveRequest; fields = ['date', 'leave_type', 'requested_minutes', 'reason']
+        
     def validate(self, data):
+        employee = self.context['request'].user.employee
+        if LeaveRequest.objects.filter(employee=employee, date=data['date']).exists():
+            raise serializers.ValidationError("A leave request for this employee on this date already exists.")
         if data.get('leave_type') == LeaveRequest.TYPE_FULL_DAY: data['requested_minutes'] = 0
         elif data.get('leave_type') == LeaveRequest.TYPE_HOURLY and data.get('requested_minutes', 0) <= 0:
             raise serializers.ValidationError("Requested minutes must be greater than 0 for hourly leave.")
@@ -37,7 +47,11 @@ class LeaveRequestListSerializer(serializers.ModelSerializer):
 
 class MissionRequestCreateSerializer(serializers.ModelSerializer):
     class Meta: model = MissionRequest; fields = ['date', 'mission_type', 'start_time', 'end_time', 'destination', 'reason']
+    
     def validate(self, data):
+        employee = self.context['request'].user.employee
+        if MissionRequest.objects.filter(employee=employee, date=data['date']).exists():
+            raise serializers.ValidationError("A mission request for this employee on this date already exists.")
         if data.get('mission_type') == MissionRequest.TYPE_HOURLY:
             if not data.get('start_time') or not data.get('end_time'): raise serializers.ValidationError("Start and End time are required for hourly missions.")
             if data.get('start_time') >= data.get('end_time'): raise serializers.ValidationError("End time must be after start time.")
@@ -51,24 +65,16 @@ class MissionRequestListSerializer(serializers.ModelSerializer):
     class Meta: model = MissionRequest; fields = ['id', 'date', 'employee_name', 'mission_type', 'start_time', 'end_time', 'destination', 'reason', 'status']
 
 class ManualLogRequestCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ManualLogRequest
-        fields = ['date', 'time', 'log_type', 'reason']
+    class Meta: model = ManualLogRequest; fields = ['date', 'time', 'log_type', 'reason']
 
 class ManualLogRequestPairCreateSerializer(serializers.Serializer):
-    date = serializers.DateField()
-    start_time = serializers.TimeField()
-    end_time = serializers.TimeField()
-    reason = serializers.CharField(required=False, allow_blank=True)
+    date = serializers.DateField(); start_time = serializers.TimeField(); end_time = serializers.TimeField(); reason = serializers.CharField(required=False, allow_blank=True)
     def validate(self, data):
-        if data['start_time'] >= data['end_time']:
-            raise serializers.ValidationError("End time must be after start time.")
+        if data['start_time'] >= data['end_time']: raise serializers.ValidationError("End time must be after start time.")
         return data
 
 class ManualLogRequestListSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     status = serializers.CharField(source='get_status_display', read_only=True)
     log_type = serializers.CharField(source='get_log_type_display', read_only=True)
-    class Meta:
-        model = ManualLogRequest
-        fields = ['id', 'date', 'time', 'employee_name', 'log_type', 'reason', 'status']
+    class Meta: model = ManualLogRequest; fields = ['id', 'date', 'time', 'employee_name', 'log_type', 'reason', 'status']
