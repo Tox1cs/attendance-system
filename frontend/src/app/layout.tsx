@@ -8,11 +8,6 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Attendance Pro",
   description: "Full-Stack Attendance App",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon-16x16.png",
-    apple: "/apple-touch-icon.png",
-  },
 };
 
 export default function RootLayout({
@@ -21,8 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-gray-100 text-gray-900`}>
+    <html lang="en" className="dark">
+      <body className={`font-sans antialiased`}>
         {children}
         <Toaster richColors position="bottom-right" />
       </body>

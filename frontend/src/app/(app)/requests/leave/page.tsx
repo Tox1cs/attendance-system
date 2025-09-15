@@ -1,129 +1,202 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import apiClient from "@/lib/apiClient";
+import { toast } from "sonner";
+import { motion, Variants, AnimatePresence } from "framer-motion";
+import { PencilIcon, TrashIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import CustomDatePicker from "@/components/CustomDatePicker";
+import { format } from "date-fns";
+import Modal from "@/components/Modal";
+import ConfirmationModal from "@/components/ConfirmationModal";
+import EditLeaveModal from "@/components/EditLeaveModal";
+import CustomSelect, { type SelectOption } from "@/components/ui/CustomSelect";
+import TimePicker from "@/components/ui/TimePicker";
+import { Popover, Transition } from "@headlessui/react";
 
-type LeaveHistoryItem = { id: number; date: string; status: string; leave_type: string; requested_minutes: number; };
-const statusColorMap: { [key: string]: string } = { "Pending": "text-yellow-600 bg-yellow-100", "Approved": "text-green-600 bg-green-100", "Rejected": "text-red-600 bg-red-100" };
-const getAuthHeaders = () => ({ "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("access_token")}` });
+const containerVariants: Variants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
+const itemVariants: Variants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { duration: 0.5, ease: "easeOut" } } };
+
+type LeaveHistoryItem = {
+  id: number;
+  date: string;
+  status: string;
+  leave_type: string;
+  start_time: string | null;
+  end_time: string | null;
+  reason: string | null;
+};
+
+const statusColorMap: { [key: string]: string } = { "Pending": "text-yellow-400 bg-yellow-900/50", "Approved": "text-green-400 bg-green-900/50", "Rejected": "text-red-400 bg-red-900/50" };
+
+const leaveTypeOptions: SelectOption[] = [
+    { value: 'FULL_DAY', label: 'Full-Day Leave' },
+    { value: 'HOURLY', label: 'Hourly Leave' },
+];
 
 export default function LeaveRequestPage() {
-  const [leaveRequestDate, setLeaveRequestDate] = useState("");
-  const [leaveType, setLeaveType] = useState("FULL_DAY");
-  const [leaveMinutes, setLeaveMinutes] = useState(0);
+  const [leaveRequestDate, setLeaveRequestDate] = useState<Date | undefined>(undefined);
+  const [leaveType, setLeaveType] = useState<string>("FULL_DAY");
+  const [startTime, setStartTime] = useState("08:00");
+  const [endTime, setEndTime] = useState("10:00");
   const [leaveReason, setLeaveReason] = useState("");
-  const [leaveMessage, setLeaveMessage] = useState<{type: "success" | "error", text: string} | null>(null);
   const [history, setHistory] = useState<LeaveHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isReasonModalOpen, setIsReasonModalOpen] = useState(false);
+  const [reasonToShow, setReasonToShow] = useState("");
+  const [selectedRequest, setSelectedRequest] = useState<LeaveHistoryItem | null>(null);
 
   const fetchHistory = async () => {
     setLoading(true);
-    const token = localStorage.getItem("access_token");
-    if (!token) { window.location.href = '/'; return; }
-    try {
-      const response = await fetch("http://localhost:8000/api/leave/my-history/", { headers: { "Authorization": `Bearer ${token}` } });
-      if (!response.ok) throw new Error("Failed to fetch history.");
-      const data = await response.json();
-      setHistory(data);
-    } catch (err) { console.error(err); } 
-    finally { setLoading(false); }
+    const data = await apiClient("/leave/my-history/");
+    if (data) { setHistory(data); } 
+    setLoading(false);
   };
 
   useEffect(() => { fetchHistory(); }, []);
 
-  const handleLeaveRequest = async (e: React.FormEvent) => {
+  const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLeaveMessage(null);
-    if (!leaveRequestDate) { setLeaveMessage({ type: "error", text: "Please select a date." }); return; }
-    const minutes = leaveType === 'HOURLY' ? leaveMinutes : 0;
-    if (leaveType === 'HOURLY' && minutes <= 0) { setLeaveMessage({ type: "error", text: "Minutes must be greater than 0 for hourly leave." }); return; }
-    
-    try {
-      const response = await fetch("http://localhost:8000/api/leave/request/", {
-        method: "POST", headers: getAuthHeaders(),
-        body: JSON.stringify({ date: leaveRequestDate, leave_type: leaveType, requested_minutes: minutes, reason: leaveReason })
-      });
-      const data = await response.json();
-      if (response.status === 201) {
-        setLeaveMessage({ type: "success", text: "Leave request submitted!" });
-        setLeaveRequestDate(""); setLeaveType("FULL_DAY"); setLeaveMinutes(0); setLeaveReason("");
+    if (!leaveRequestDate) { toast.error("Please select a date."); return; }
+    const formattedDate = format(leaveRequestDate, "yyyy-MM-dd");
+    const payload: any = { date: formattedDate, leave_type: leaveType, reason: leaveReason };
+    if (leaveType === 'HOURLY') {
+        if (!startTime || !endTime) { toast.error("Start and End time are required."); return; }
+        payload.start_time = startTime;
+        payload.end_time = endTime;
+    }
+    const data = await apiClient("/leave/request/", {
+        method: 'POST', body: JSON.stringify(payload)
+    });
+    if (data) {
+        toast.success("Leave request submitted!");
+        setLeaveRequestDate(undefined); setLeaveType("FULL_DAY"); setStartTime("08:00"); setEndTime("10:00"); setLeaveReason("");
         fetchHistory();
-      } else {
-        if (data.non_field_errors && data.non_field_errors.length > 0) {
-            setLeaveMessage({ type: "error", text: data.non_field_errors[0] });
-        } else {
-            setLeaveMessage({ type: "error", text: "An unknown error occurred." });
-        }
-      }
-    } catch (err) {
-      setLeaveMessage({ type: "error", text: "Connection error." });
     }
   };
 
+  const openEditModal = (request: LeaveHistoryItem) => { setSelectedRequest(request); setIsEditModalOpen(true); };
+  const openDeleteModal = (request: LeaveHistoryItem) => { setSelectedRequest(request); setIsDeleteModalOpen(true); };
+  const showReasonModal = (fullReason: string) => { setReasonToShow(fullReason); setIsReasonModalOpen(true); };
+
+  const handleDeleteRequest = async () => {
+    if (!selectedRequest) return;
+    const response = await apiClient(`/leave/request/${selectedRequest.id}/`, { method: 'DELETE' });
+    if (response) {
+        toast.success("Request deleted successfully.");
+        fetchHistory();
+        setIsDeleteModalOpen(false);
+        setSelectedRequest(null);
+    }
+  };
+
+  const ReasonCell = ({ reason }: { reason: string | null }) => {
+    if (!reason) return <span className="text-gray-500">-</span>;
+    const maxLength = 25;
+    if (reason.length <= maxLength) { return <span className="text-gray-300">{reason}</span>; }
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-gray-300">{`${reason.substring(0, maxLength)}...`}</span>
+        <button onClick={() => showReasonModal(reason)} className="text-gray-400 hover:text-white">
+            <InformationCircleIcon className="h-5 w-5"/>
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-      <div className="rounded-lg bg-white p-6 shadow-md">
-        <h2 className="mb-4 text-xl font-semibold text-gray-700">Submit Leave Request</h2>
-        <form onSubmit={handleLeaveRequest} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Leave Type</label>
-            <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm sm:w-64">
-              <option value="FULL_DAY">Full-Day Leave</option>
-              <option value="HOURLY">Hourly Leave</option>
-            </select>
+    <>
+      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+        <motion.div variants={itemVariants} className="lg:col-span-2">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-6 shadow-lg backdrop-blur-md">
+            <h2 className="mb-4 text-xl font-semibold text-white">Submit Leave Request</h2>
+            <form onSubmit={handleCreateRequest} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300">Leave Type</label>
+                <CustomSelect options={leaveTypeOptions} value={leaveType} onChange={(val) => setLeaveType(val as string)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300">Date</label>
+                <CustomDatePicker selectedDate={leaveRequestDate} onSelectDate={setLeaveRequestDate} />
+              </div>
+              <AnimatePresence>
+                {leaveType === 'HOURLY' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }} className="space-y-4 overflow-hidden">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300">Start Time</label>
+                        <TimePicker value={startTime} onChange={setStartTime} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300">End Time</label>
+                        <TimePicker value={endTime} onChange={setEndTime} />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div>
+                <label htmlFor="leave-reason" className="block text-sm font-medium text-gray-300">Reason</label>
+                <textarea id="leave-reason" value={leaveReason} onChange={(e) => setLeaveReason(e.target.value)} className="mt-1 block w-full rounded-lg border-gray-600 bg-gray-700/50 text-white shadow-sm" rows={3} />
+              </div>
+              <button type="submit" className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Submit Request</button>
+            </form>
           </div>
-          <div>
-            <label htmlFor="leave-date" className="block text-sm font-medium text-gray-700">Date</label>
-            <input id="leave-date" type="date" value={leaveRequestDate} onChange={(e) => setLeaveRequestDate(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm sm:w-64"
-            />
-          </div>
-          {leaveType === 'HOURLY' && (
-            <div>
-              <label htmlFor="leave-minutes" className="block text-sm font-medium text-gray-700">Duration (in Minutes)</label>
-              <input id="leave-minutes" type="number" value={leaveMinutes} onChange={(e) => setLeaveMinutes(parseInt(e.target.value) || 0)}
-                className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm sm:w-64"
-              />
+        </motion.div>
+        <motion.div variants={itemVariants} className="lg:col-span-3">
+          <div className="rounded-xl border border-white/10 bg-black/20 shadow-lg backdrop-blur-md">
+            <h2 className="border-b border-white/10 p-6 text-xl font-semibold text-white">My Leave History</h2>
+            <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
+                <table className="min-w-full">
+                <thead className="sticky top-0 bg-gray-800">
+                    <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Time Range</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Reason</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                    {loading ? ( <tr><td colSpan={6} className="p-4 text-center text-sm text-gray-400">Loading...</td></tr> ) 
+                    : history.length === 0 ? ( <tr><td colSpan={6} className="p-4 text-center text-sm text-gray-400">No requests.</td></tr> ) 
+                    : (
+                    history.map((item) => (
+                        <tr key={item.id} className="hover:bg-white/5">
+                        <td className="px-6 py-4 text-sm font-medium text-white">{item.date}</td>
+                        <td className="px-6 py-4 text-sm text-gray-300">{item.leave_type}</td>
+                        <td className="px-6 py-4 text-sm font-mono text-gray-300">
+                            {item.start_time ? `${item.start_time.substring(0,5)} - ${item.end_time?.substring(0,5)}` : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm max-w-xs"><ReasonCell reason={item.reason} /></td>
+                        <td className="px-6 py-4 text-sm"><span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ${statusColorMap[item.status]}`}>{item.status}</span></td>
+                        <td className="px-6 py-4 text-sm font-medium">
+                            {item.status === 'Pending' ? (
+                                <div className="flex items-center space-x-4">
+                                    <button onClick={() => openEditModal(item)} className="text-indigo-400 hover:text-indigo-300"><PencilIcon className="h-5 w-5"/></button>
+                                    <button onClick={() => openDeleteModal(item)} className="text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
+                                </div>
+                            ) : ( <span className="text-xs text-gray-500 italic">No actions</span> )}
+                        </td>
+                        </tr>
+                    ))
+                    )}
+                </tbody>
+                </table>
             </div>
-          )}
-          <div>
-            <label htmlFor="leave-reason" className="block text-sm font-medium text-gray-700">Reason (Optional)</label>
-            <textarea id="leave-reason" value={leaveReason} onChange={(e) => setLeaveReason(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm" rows={3}
-            />
           </div>
-          {leaveMessage && <div className={`rounded-md p-3 text-sm ${leaveMessage.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{leaveMessage.text}</div>}
-          <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">Submit Leave Request</button>
-        </form>
-      </div>
-      <div className="rounded-lg bg-white p-6 shadow-md">
-        <h2 className="mb-4 text-xl font-semibold text-gray-700">My Leave History</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Mins</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {loading ? ( <tr><td colSpan={4} className="p-4 text-center text-sm text-gray-500">Loading...</td></tr> ) 
-            : history.length === 0 ? ( <tr><td colSpan={4} className="p-4 text-center text-sm text-gray-500">No leave requests.</td></tr> ) 
-            : (
-              history.map((item) => (
-                <tr key={item.id}>
-                  <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-gray-900">{item.date}</td>
-                  <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{item.leave_type}</td>
-                  <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{item.leave_type === 'Hourly Leave' ? item.requested_minutes : 'N/A'}</td>
-                  <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusColorMap[item.status] || 'bg-gray-100'}`}>{item.status}</span>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+      <EditLeaveModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} request={selectedRequest} onSuccess={() => { setIsEditModalOpen(false); fetchHistory(); }} />
+      <ConfirmationModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={handleDeleteRequest} title="Delete Leave Request" message="Are you sure you want to permanently delete this leave request?" confirmText="Delete"/>
+      <Modal isOpen={isReasonModalOpen} onClose={() => setIsReasonModalOpen(false)} title="Full Reason">
+        <p className="text-sm text-gray-300 whitespace-pre-wrap">{reasonToShow}</p>
+      </Modal>
+    </>
   );
 }

@@ -1,196 +1,150 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import apiClient from "@/lib/apiClient";
+import { motion, AnimatePresence } from "framer-motion";
+import { ClockIcon, PaperAirplaneIcon, PencilSquareIcon, CalendarDaysIcon } from "@heroicons/react/24/outline";
 
-type PendingOTRequest = { id: number; date: string; employee_name: string; };
-type PendingLeaveRequest = { id: number; date: string; employee_name: string; leave_type: string; requested_minutes: number; reason: string; };
-type PendingMissionRequest = { id: number; date: string; employee_name: string; mission_type: string; start_time: string | null; end_time: string | null; destination: string; reason: string; };
-type PendingLogRequest = { id: number; date: string; time: string; employee_name: string; log_type: string; reason: string; };
+const itemVariants = { hidden: { y: 10, opacity: 0 }, visible: { y: 0, opacity: 1 } };
+const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } };
 
-const getApiHeaders = () => ({ "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("access_token")}`});
+type Employee = { id: number; full_name: string; };
+type PendingRequest = { id: number; date: string; employee_name: string; [key: string]: any; };
+type Tab = 'logs' | 'overtime' | 'leave' | 'mission';
 
 export default function ManagementPage() {
-  const [pendingOT, setPendingOT] = useState<PendingOTRequest[]>([]);
-  const [pendingLeave, setPendingLeave] = useState<PendingLeaveRequest[]>([]);
-  const [pendingMission, setPendingMission] = useState<PendingMissionRequest[]>([]);
-  const [pendingLogs, setPendingLogs] = useState<PendingLogRequest[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>('logs');
+  const [team, setTeam] = useState<Employee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const [counts, setCounts] = useState({ logs: 0, overtime: 0, leave: 0, mission: 0 });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchAllPending = async () => {
-    setLoading(true); setError(null);
-    const headers = getApiHeaders();
-    if (!headers) { setError("Not authenticated."); window.location.href = '/'; return; }
-    try {
-      const [otRes, leaveRes, missionRes, logRes] = await Promise.all([
-        fetch("http://localhost:8000/api/manager/pending-requests/", { headers }),
-        fetch("http://localhost:8000/api/manager/pending-leave/", { headers }),
-        fetch("http://localhost:8000/api/manager/pending-mission/", { headers }),
-        fetch("http://localhost:8000/api/manager/pending-logs/", { headers })
-      ]);
-      if (!otRes.ok || !leaveRes.ok || !missionRes.ok || !logRes.ok) throw new Error("Failed to fetch pending data.");
-      setPendingOT(await otRes.json());
-      setPendingLeave(await leaveRes.json());
-      setPendingMission(await missionRes.json());
-      setPendingLogs(await logRes.json());
-    } catch (err: any) { setError(err.message); } 
-    finally { setLoading(false); }
-  };
+  const fetchCounts = useCallback(async () => {
+    const [logData, otData, leaveData, missionData] = await Promise.all([
+      apiClient("/manager/pending-logs/"),
+      apiClient("/manager/pending-requests/"),
+      apiClient("/manager/pending-leave/"),
+      apiClient("/manager/pending-mission/")
+    ]);
+    setCounts({
+      logs: logData?.length || 0,
+      overtime: otData?.length || 0,
+      leave: leaveData?.length || 0,
+      mission: missionData?.length || 0,
+    });
+  }, []);
 
-  useEffect(() => { fetchAllPending(); }, []);
-
-  const handleReview = async (type: 'OT' | 'Leave' | 'Mission' | 'Log', requestId: number, action: "APPROVE" | "REJECT") => {
-    const headers = getApiHeaders();
-    if (!headers) return;
+  const fetchRequestsForTab = useCallback(async (tab: Tab, employeeId: string) => {
+    setLoading(true);
     let url = '';
-    if (type === 'OT') url = `http://localhost:8000/api/manager/review/${requestId}/`;
-    if (type === 'Leave') url = `http://localhost:8000/api/manager/review-leave/${requestId}/`;
-    if (type === 'Mission') url = `http://localhost:8000/api/manager/review-mission/${requestId}/`;
-    if (type === 'Log') url = `http://localhost:8000/api/manager/review-log/${requestId}/`;
+    if (tab === 'logs') url = "/manager/pending-logs/";
+    if (tab === 'overtime') url = "/manager/pending-requests/";
+    if (tab === 'leave') url = "/manager/pending-leave/";
+    if (tab === 'mission') url = "/manager/pending-mission/";
     
-    try {
-      const response = await fetch(url, { method: "POST", headers: headers, body: JSON.stringify({ action: action }) });
-      if (!response.ok) throw new Error(`Failed to review ${type} request.`);
-      alert(`${type} Request ${action}d!`);
-      if (type === 'OT') setPendingOT(current => current.filter(req => req.id !== requestId));
-      if (type === 'Leave') setPendingLeave(current => current.filter(req => req.id !== requestId));
-      if (type === 'Mission') setPendingMission(current => current.filter(req => req.id !== requestId));
-      if (type === 'Log') setPendingLogs(current => current.filter(req => req.id !== requestId));
-    } catch (err: any) { alert(`Error: ${err.message}`); }
+    if (employeeId !== "all") {
+      url += `?employee_id=${employeeId}`;
+    }
+
+    const data = await apiClient(url);
+    if (data) setRequests(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const initialFetch = async () => {
+      await fetchCounts();
+      const teamData = await apiClient('/team/');
+      if (teamData) setTeam(teamData);
+      await fetchRequestsForTab(activeTab, selectedEmployee);
+    };
+    initialFetch();
+  }, [fetchCounts, fetchRequestsForTab, activeTab, selectedEmployee]);
+  
+  const handleReview = async (type: string, requestId: number, action: "APPROVE" | "REJECT") => {
+    let url = '';
+    if (type === 'logs') url = `/manager/review-log/${requestId}/`;
+    if (type === 'mission') url = `/manager/review-mission/${requestId}/`;
+    if (type === 'leave') url = `/manager/review-leave/${requestId}/`;
+    if (type === 'overtime') url = `/manager/review/${requestId}/`;
+    
+    const response = await apiClient(url, { method: "POST", body: JSON.stringify({ action: action }) });
+    if (response) {
+      await fetchCounts();
+      await fetchRequestsForTab(activeTab, selectedEmployee);
+    }
   };
 
-  if (loading) return <div>Loading Management Data...</div>;
-  if (error) return <div className="rounded-md bg-red-100 p-4 text-red-700">{error}</div>;
+  const TabButton = ({ tabName, label, count, icon: Icon }: { tabName: Tab; label: string; count: number; icon: React.ElementType }) => (
+    <button onClick={() => setActiveTab(tabName)}
+      className={`relative flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${activeTab === tabName ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-300 hover:bg-black/20 hover:text-white'}`}>
+      <Icon className="h-5 w-5" /> {label}
+      {count > 0 && <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white ring-2 ring-gray-900">{count}</span>}
+    </button>
+  );
 
   return (
-    <div className="space-y-8">
-      <h1 className="mb-6 text-3xl font-bold text-gray-800">Requests Management</h1>
+    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8">
+      <motion.h1 variants={itemVariants} className="text-3xl font-extrabold text-white text-center">Requests Management</motion.h1>
       
-      <div className="overflow-hidden rounded-lg bg-white shadow-md">
-        <h2 className="border-b border-gray-200 p-6 text-xl font-semibold text-gray-700">Pending Manual Log Requests</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Employee</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Date & Time</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {pendingLogs.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">No pending log requests.</td></tr>
-            ) : (
-              pendingLogs.map((req) => (
-                <tr key={req.id}>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{req.employee_name}</td>
-                  <td className="px-6 py-4"><div className="text-sm text-gray-900">{req.date}</div><div className="text-xs text-gray-500">{req.time}</div></td>
-                  <td className="px-6 py-4 text-sm font-semibold">{req.log_type}</td>
-                  <td className="whitespace-nowrap space-x-2 px-6 py-4 text-sm font-medium">
-                    <button onClick={() => handleReview('Log', req.id, "APPROVE")} className="rounded-md bg-green-600 px-3 py-1 text-white hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReview('Log', req.id, "REJECT")} className="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700">Reject</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <motion.div variants={itemVariants} className="rounded-xl border border-white/10 bg-black/20 p-4 shadow-lg backdrop-blur-md">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <nav className="flex items-center space-x-2">
+            <TabButton tabName="logs" label="Manual Logs" count={counts.logs} icon={PencilSquareIcon} />
+            <TabButton tabName="mission" label="Missions" count={counts.mission} icon={PaperAirplaneIcon} />
+            <TabButton tabName="leave" label="Leaves" count={counts.leave} icon={CalendarDaysIcon} />
+            <TabButton tabName="overtime" label="Overtimes" count={counts.overtime} icon={ClockIcon} />
+          </nav>
+          <div>
+            <label htmlFor="employee-filter" className="sr-only">Filter by employee</label>
+            <select id="employee-filter" value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)}
+              className="rounded-lg border-gray-600 bg-gray-700/50 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+              <option value="all">All Team Members</option>
+              {team.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+            </select>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="overflow-hidden rounded-lg bg-white shadow-md">
-        <h2 className="border-b border-gray-200 p-6 text-xl font-semibold text-gray-700">Pending Mission Requests</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Employee</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Date / Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Details</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {pendingMission.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">No pending mission requests.</td></tr>
-            ) : (
-              pendingMission.map((req) => (
-                <tr key={req.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">{req.employee_name}</td>
-                  <td className="px-6 py-4"><div className="text-sm text-gray-900">{req.date}</div><div className="text-xs text-gray-500">{req.mission_type}</div></td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{req.mission_type === 'Hourly Mission' ? `${req.start_time?.substring(0,5)} - ${req.end_time?.substring(0,5)}` : req.destination || 'N/A'}</td>
-                  <td className="whitespace-nowrap space-x-2 px-6 py-4 text-sm font-medium">
-                    <button onClick={() => handleReview('Mission', req.id, "APPROVE")} className="rounded-md bg-green-600 px-3 py-1 text-white hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReview('Mission', req.id, "REJECT")} className="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700">Reject</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="overflow-hidden rounded-lg bg-white shadow-md">
-        <h2 className="border-b border-gray-200 p-6 text-xl font-semibold text-gray-700">Pending Overtime Requests</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Employee</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {pendingOT.length === 0 ? (
-              <tr><td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">No pending overtime requests.</td></tr>
-            ) : (
-              pendingOT.map((req) => (
-                <tr key={req.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">{req.employee_name}</td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{req.date}</td>
-                  <td className="whitespace-nowrap space-x-2 px-6 py-4 text-sm font-medium">
-                    <button onClick={() => handleReview('OT', req.id, "APPROVE")} className="rounded-md bg-green-600 px-3 py-1 text-white hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReview('OT', req.id, "REJECT")} className="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700">Reject</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="overflow-hidden rounded-lg bg-white shadow-md">
-        <h2 className="border-b border-gray-200 p-6 text-xl font-semibold text-gray-700">Pending Leave Requests</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Employee</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Mins</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Reason</th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {pendingLeave.length === 0 ? (
-              <tr><td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">No pending leave requests.</td></tr>
-            ) : (
-              pendingLeave.map((req) => (
-                <tr key={req.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">{req.employee_name}</td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{req.date}</td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{req.leave_type}</td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{req.leave_type === 'Hourly Leave' ? req.requested_minutes : 'N/A'}</td>
-                  <td className="max-w-xs truncate px-6 py-4 text-sm text-gray-500" title={req.reason}>{req.reason}</td>
-                  <td className="whitespace-nowrap space-x-2 px-6 py-4 text-sm font-medium">
-                    <button onClick={() => handleReview('Leave', req.id, "APPROVE")} className="rounded-md bg-green-600 px-3 py-1 text-white hover:bg-green-700">Approve</button>
-                    <button onClick={() => handleReview('Leave', req.id, "REJECT")} className="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700">Reject</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab + selectedEmployee} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <div className="rounded-xl border border-white/10 bg-black/20 shadow-lg backdrop-blur-md">
+                <div className="max-h-[60vh] overflow-y-auto">
+                    {loading ? <div className="p-8 text-center text-gray-400">Loading requests...</div> :
+                     requests.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No pending requests in this category.</div> :
+                     ( <table className="min-w-full"><thead className="sticky top-0 bg-black/30 backdrop-blur-lg">
+                        {/* Headers will be dynamic in a more advanced version, for now we show common ones */}
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Employee</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Date</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Details</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-300">Action</th>
+                        </tr>
+                       </thead><tbody className="divide-y divide-white/10">
+                        {requests.map((req) => (
+                            <tr key={req.id} className="hover:bg-white/5">
+                                <td className="px-6 py-4 text-sm font-medium text-white">{req.employee_name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-300">{req.date}</td>
+                                <td className="px-6 py-4 text-sm text-gray-300">
+                                    {req.log_type && <span>{req.log_type} @ {req.time}</span>}
+                                    {req.mission_type && <span>{req.mission_type}</span>}
+                                    {req.leave_type && <span>{req.leave_type} ({req.requested_minutes}m)</span>}
+                                    {req.requested_minutes === 0 && !req.leave_type && <span>OT Request</span>}
+                                </td>
+                                <td className="whitespace-nowrap space-x-2 px-6 py-4 text-sm font-medium">
+                                    <button onClick={() => handleReview(activeTab, req.id, "APPROVE")} className="rounded-md bg-green-600 px-3 py-1 text-white hover:bg-green-700">Approve</button>
+                                    <button onClick={() => handleReview(activeTab, req.id, "REJECT")} className="rounded-md bg-red-600 px-3 py-1 text-white hover:bg-red-700">Reject</button>
+                                </td>
+                            </tr>
+                        ))}
+                       </tbody></table>
+                     )
+                    }
+                </div>
+            </div>
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

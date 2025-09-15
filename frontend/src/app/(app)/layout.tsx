@@ -4,9 +4,18 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { 
-  HomeIcon, ClockIcon, DocumentTextIcon, CheckCircleIcon, CalendarDaysIcon, 
-  ChevronDownIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, UserCircleIcon,
-  PaperAirplaneIcon, PencilSquareIcon, AdjustmentsHorizontalIcon
+  HomeIcon, 
+  ClockIcon, 
+  DocumentTextIcon, 
+  CheckCircleIcon, 
+  CalendarDaysIcon, 
+  ChevronDownIcon,
+  Cog6ToothIcon,
+  ArrowRightOnRectangleIcon,
+  UserCircleIcon,
+  PaperAirplaneIcon,
+  PencilSquareIcon,
+  AdjustmentsHorizontalIcon
 } from "@heroicons/react/24/outline";
 
 type NavMenu = { name: string; href: string; icon: React.ElementType; };
@@ -49,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isChildActive = (href: string) => pathname === href;
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gray-100">
+    <div className="flex h-screen w-full overflow-hidden bg-gray-900">
       <aside className="flex w-72 flex-shrink-0 flex-col bg-gray-900 text-gray-300 shadow-lg">
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 py-4"><h1 className="text-2xl font-semibold text-white">Attendance Pro</h1></div>

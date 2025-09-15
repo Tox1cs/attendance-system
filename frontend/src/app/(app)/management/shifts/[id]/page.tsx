@@ -5,6 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import apiClient from "@/lib/apiClient";
 import { toast } from "sonner";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { motion, Variants } from "framer-motion";
+import TimePicker from "@/components/ui/TimePicker";
+import Switch from "@/components/ui/Switch";
 
 type ShiftDayRule = {
     id: number;
@@ -22,10 +25,13 @@ type ShiftDetail = {
 };
 
 const dayOfWeekMap: { [key: number]: string } = {
-    5: "Saturday", 6: "Sunday", 0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday"
+    0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"
 };
 
 const dayOrder = [5, 6, 0, 1, 2, 3, 4];
+
+const containerVariants: Variants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
+const itemVariants: Variants = { hidden: { x: -20, opacity: 0 }, visible: { x: 0, opacity: 1 } };
 
 export default function EditShiftPage() {
   const params = useParams();
@@ -70,6 +76,7 @@ export default function EditShiftPage() {
     });
     if(data) {
         toast.success(`Shift "${data.name}" updated successfully!`);
+        data.day_rules.sort((a: ShiftDayRule, b: ShiftDayRule) => dayOrder.indexOf(a.day_of_week) - dayOrder.indexOf(b.day_of_week));
         setShift(data);
         setInitialShift(JSON.parse(JSON.stringify(data)));
     }
@@ -78,62 +85,59 @@ export default function EditShiftPage() {
   
   const isChanged = JSON.stringify(shift) !== JSON.stringify(initialShift);
 
-  if (loading) return <div className="text-center">Loading shift details...</div>;
-  if (!shift) return <div className="text-center text-red-500">Could not load shift data.</div>;
+  if (loading) return <div className="text-center text-white">Loading shift details...</div>;
+  if (!shift) return <div className="text-center text-red-400">Could not load shift data.</div>;
 
   return (
-    <div>
-        <button onClick={() => router.back()} className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <button onClick={() => router.back()} className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-white">
             <ArrowLeftIcon className="h-4 w-4" />
             Back to Settings
         </button>
-        <h1 className="mb-6 text-3xl font-bold text-gray-800">Edit Shift: <span className="text-indigo-600">{shift.name}</span></h1>
+        <h1 className="mb-6 text-3xl font-bold text-white">Edit Shift: <span className="text-indigo-400">{shift.name}</span></h1>
 
-        <div className="space-y-4 rounded-lg bg-white p-6 shadow-md">
-            {shift.day_rules.map((rule) => (
-                <div key={rule.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 border-b pb-4 last:border-b-0 last:pb-0">
-                    <div className="flex items-center md:col-span-1">
-                        <input
-                            type="checkbox"
-                            checked={rule.is_work_day}
-                            onChange={(e) => handleRuleChange(rule.id, 'is_work_day', e.target.checked)}
-                            className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <label className="ml-3 block text-base font-bold text-gray-800">{dayOfWeekMap[rule.day_of_week]}</label>
-                    </div>
-                    
-                    <div className="md:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500">Start Time</label>
-                            <input type="time" disabled={!rule.is_work_day} value={rule.start_time}
-                                onChange={(e) => handleRuleChange(rule.id, 'start_time', e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm disabled:opacity-50"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500">End Time</label>
-                            <input type="time" disabled={!rule.is_work_day} value={rule.end_time}
-                                onChange={(e) => handleRuleChange(rule.id, 'end_time', e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm disabled:opacity-50"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500">Required (Mins)</label>
-                            <input type="number" disabled={!rule.is_work_day} value={rule.required_work_minutes}
-                                onChange={(e) => handleRuleChange(rule.id, 'required_work_minutes', Number(e.target.value))}
-                                className="mt-1 block w-full rounded-md border-gray-300 text-gray-900 shadow-sm disabled:opacity-50"
-                            />
-                        </div>
-                    </div>
-                </div>
-            ))}
-            <div className="flex justify-end pt-4">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="rounded-xl border border-white/10 bg-black/20 shadow-lg backdrop-blur-md">
+            <div className="overflow-x-auto">
+                <table className="min-w-full">
+                    <thead className="bg-black/20">
+                        <tr>
+                            <th className="px-6 py-4 text-left text-xs font-medium uppercase text-gray-300 tracking-wider">Day</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium uppercase text-gray-300 tracking-wider">Work Day?</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium uppercase text-gray-300 tracking-wider">Start Time</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium uppercase text-gray-300 tracking-wider">End Time</th>
+                            <th className="px-6 py-4 text-left text-xs font-medium uppercase text-gray-300 tracking-wider">Required (Mins)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                        {shift.day_rules.map((rule) => (
+                            <motion.tr key={rule.id} variants={itemVariants} className={`transition-opacity ${!rule.is_work_day ? 'opacity-60' : ''}`}>
+                                <td className="whitespace-nowrap px-6 py-3 text-sm font-semibold text-white">{dayOfWeekMap[rule.day_of_week]}</td>
+                                <td className="whitespace-nowrap px-6 py-3">
+                                    <Switch checked={rule.is_work_day} onChange={(checked) => handleRuleChange(rule.id, 'is_work_day', checked)} />
+                                </td>
+                                <td className="whitespace-nowrap px-6 py-3">
+                                    <TimePicker value={rule.start_time.substring(0,5)} onChange={(time) => handleRuleChange(rule.id, 'start_time', time)} />
+                                </td>
+                                <td className="whitespace-nowrap px-6 py-3">
+                                    <TimePicker value={rule.end_time.substring(0,5)} onChange={(time) => handleRuleChange(rule.id, 'end_time', time)} />
+                                </td>
+                                <td className="whitespace-nowrap px-6 py-3">
+                                    <input type="number" value={rule.required_work_minutes} onChange={(e) => handleRuleChange(rule.id, 'required_work_minutes', Number(e.target.value))} 
+                                        className="hide-number-arrows w-24 rounded-lg border-gray-600 bg-gray-700/50 p-2 text-center text-white"
+                                    />
+                                </td>
+                            </motion.tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div className="flex justify-end p-4 border-t border-white/10">
                 <button onClick={handleSave} disabled={!isChanged || isSaving}
                     className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50">
-                    {isSaving ? "Saving Rules..." : "Save Shift Rules"}
+                    {isSaving ? "Saving..." : "Save Shift Rules"}
                 </button>
             </div>
-        </div>
-    </div>
+        </motion.div>
+    </motion.div>
   );
 }

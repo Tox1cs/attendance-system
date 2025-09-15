@@ -23,7 +23,7 @@ export default function CreateShiftModal({ isOpen, onClose, onSuccess }: CreateS
       return;
     }
     setLoading(true);
-    const data = await apiClient("/shifts/create/", {
+    const data = await apiClient("/shifts/", {
       method: 'POST',
       body: JSON.stringify({ name: shiftName }),
     });
